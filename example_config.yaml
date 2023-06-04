@@ -1,0 +1,5 @@
+port: 3001 # What port to listen on
+index_dbpath: ./db.sqlite # Where the db for the index lives
+storage:
+  type: Local
+  directory: ./store

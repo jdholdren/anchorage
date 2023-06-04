@@ -1,0 +1,21 @@
+[package]
+name = "anchorage"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "anchoraged"
+
+[[bin]]
+name = "anc"
+
+[dependencies]
+anyhow = "1.0.71"
+axum = "0.6.18"
+clap = "4.3.1"
+openssl = "0.10.54"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_yaml = "0.9.21"
+tokio = { version = "1.28.2", features = ["full"] }
