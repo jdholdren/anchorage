@@ -1,12 +1,12 @@
 use anyhow::Result;
 
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 
 const WINDOW_SIZE: usize = 1024 * 4;
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB;
 const MIN_FILE_SIZE: usize = 2 * 1024 * 1024; // 2MB
 
-pub fn create_chunks<R: Read>(mut r: R) -> Result<Vec<(usize, usize)>> {
+pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(usize, usize)>> {
     // But the buffer we'll read into is larger that to reduce disk reads
     let mut buffer = vec![0_u8; MAX_FILE_SIZE];
     let mut window = Window::<WINDOW_SIZE>::default();
@@ -32,14 +32,14 @@ pub fn create_chunks<R: Read>(mut r: R) -> Result<Vec<(usize, usize)>> {
             let sum = window.push_back(buffer[n]);
             if current_pos - start < MIN_FILE_SIZE && sum == 500000 {
                 ranges.push((start, current_pos));
-                start = current_pos;
+                start = current_pos + 1;
             }
         }
 
         // Need to use max file size to cap a range
         if current_pos - start == MAX_FILE_SIZE {
             ranges.push((start, current_pos));
-            start = current_pos;
+            start = current_pos + 1;
         }
     }
 
@@ -88,18 +88,34 @@ mod create_chunks_tests {
 
     // Tests that we get consistent ranges on a sample file of Chloe
     #[test]
-    fn chunks_correctly() {
+    fn chunks_cat() {
         let f = File::open("./test_samples/cat.jpg").unwrap();
         let file_length = f.metadata().unwrap().len();
-        let r = BufReader::new(f);
+        let mut r = BufReader::new(f);
 
-        let ranges = create_chunks(r).unwrap();
+        let ranges = create_chunks(&mut r).unwrap();
         assert_eq!(
             ranges,
-            [(0, 1875473), (1875473, 1968804), (1968804, 2289659)]
+            [(0, 1875473), (1875474, 1968804), (1968805, 2289659)]
         );
 
         // We didn't leave off any bytes
         assert_eq!(ranges[ranges.len() - 1].1 as u64, file_length);
+    }
+
+    // Tests that we get a consistent chunk of a simple string
+    #[test]
+    fn chunks_string() {
+        let mut bytes: &[u8] =
+            b"When Mr Bilbo Baggins of Bag End announced that he would shortly be \
+                   celebrating his eleventyifirst birthday with a party of special \
+                   magnificence, there was much talk and excitement in Hobbiton.";
+        let len = bytes.len();
+
+        let ranges = create_chunks(&mut bytes).unwrap();
+        assert_eq!(ranges, [(0, 193)]);
+
+        // We didn't leave off any bytes
+        assert_eq!(ranges[ranges.len() - 1].1, len);
     }
 }

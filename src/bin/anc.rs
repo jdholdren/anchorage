@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     match cli().get_matches().subcommand() {
         Some(("put", submatches)) => {
             // Read from either std in or read in the file
-            let reader: Box<dyn std::io::Read> =
+            let mut reader: Box<dyn std::io::Read> =
                 if let Some(blob_location) = submatches.get_one::<String>("blob_location") {
                     Box::new(File::open(blob_location)?)
                 } else {
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
                 };
 
             // TODO: Turn into chunks
-            anchorage::chunk::create_chunks(reader)
+            anchorage::chunk::create_chunks(&mut reader)
         }
         _ => unreachable!(),
     };
