@@ -15,7 +15,10 @@ name = "anc"
 anyhow = "1.0.71"
 axum = "0.6.18"
 clap = "4.3.1"
+hex-literal = "0.4.1"
 openssl = "0.10.54"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_yaml = "0.9.21"
+sha256 = "1.1.4"
+tempfile = "3.6.0"
 tokio = { version = "1.28.2", features = ["full"] }

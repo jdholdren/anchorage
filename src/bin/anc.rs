@@ -31,7 +31,7 @@ fn main() -> Result<()> {
                 };
 
             // TODO: Turn into chunks
-            anchorage::chunk::chunky(reader)
+            anchorage::chunk::create_chunks(reader)
         }
         _ => unreachable!(),
     };
