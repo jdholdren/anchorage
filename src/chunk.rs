@@ -1,52 +1,76 @@
 use anyhow::Result;
 
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::PathBuf;
 
-const WINDOW_SIZE: usize = 1024 * 4;
+use sha256::digest;
+
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB;
+const WINDOW_SIZE: usize = 1024 * 4;
 const MIN_FILE_SIZE: usize = 2 * 1024 * 1024; // 2MB
 
-pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(usize, usize)>> {
+pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(PathBuf, File)>> {
     // But the buffer we'll read into is larger that to reduce disk reads
     let mut buffer = vec![0_u8; MAX_FILE_SIZE];
+    // The buffer that gets saved to a file
+    let mut flush_buffer = vec![0_u8; MAX_FILE_SIZE];
+    let mut flush_size = 0;
+    // The window for our rolling sum
     let mut window = Window::<WINDOW_SIZE>::default();
 
-    // We use two buffers here:
-    // one buffer to read only a piece of the file at a time, and the other is the window
-    // for calculating the hash.
-    let mut ranges: Vec<(usize, usize)> = vec![];
+    let mut ret = vec![];
 
-    let mut current_pos = 0; // The number of buffer's we've grabbed so far
-
-    // We're going to find the different ranges of our file where we want to split
-    let mut start = 0; // The first half of the range
     while let Ok(i) = r.read(&mut buffer) {
         if i == 0 {
             // EOF reached
             break;
         }
 
-        for n in 0..i {
-            current_pos += 1; // Track out current position
-                              // Tack on the byte and figure out if the hash matches our pattern
-            let sum = window.push_back(buffer[n]);
-            if current_pos - start < MIN_FILE_SIZE && sum == 500000 {
-                ranges.push((start, current_pos));
-                start = current_pos + 1;
-            }
-        }
+        for byte in buffer.iter().take(i) {
+            // Push into our flush buffer
+            flush_buffer.push(*byte);
+            flush_size += 1;
+            let sum = window.push_back(*byte);
 
-        // Need to use max file size to cap a range
-        if current_pos - start == MAX_FILE_SIZE {
-            ranges.push((start, current_pos));
-            start = current_pos + 1;
+            if flush_size < MIN_FILE_SIZE {
+                // If it's too small, don't bother with other conditions
+                continue;
+            }
+
+            println!("hash: {}, fb size: {}", sum, flush_buffer.len());
+
+            // If the sum isn't right, or we haven't run out of buffer,
+            // just keep looping
+            if sum != 500000 && flush_size < MAX_FILE_SIZE {
+                continue;
+            }
+
+            // If we're here, it's time to flush the file to a temp file
+            ret.push(tempfile(&flush_buffer)?);
+
+            // Reset the flush buffer
+            flush_buffer = vec![0_u8; MAX_FILE_SIZE];
+            flush_size = 0;
         }
     }
 
-    // One final range: whatever was left over
-    ranges.push((start, current_pos));
+    // If there's anything left in the buffer flush it
+    if !flush_buffer.is_empty() {
+        ret.push(tempfile(&flush_buffer)?);
+    }
 
-    Ok(ranges)
+    Ok(ret)
+}
+
+// Creates a tempfile with the given data
+fn tempfile(bytes: &[u8]) -> Result<(PathBuf, File)> {
+    let hash = digest(bytes);
+    let path = std::env::temp_dir().join(hash);
+    let mut f = File::create(&path)?;
+    f.write_all(bytes)?;
+
+    Ok((path, f))
 }
 
 use std::collections::LinkedList;

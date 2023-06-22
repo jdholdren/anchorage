@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{arg, Command};
 
 use std::fs::File;
-use std::io;
+use std::io::{stdin, Read};
 
 fn cli() -> Command {
     Command::new("anc")
@@ -23,15 +23,20 @@ fn main() -> Result<()> {
     match cli().get_matches().subcommand() {
         Some(("put", submatches)) => {
             // Read from either std in or read in the file
-            let mut reader: Box<dyn std::io::Read> =
+            let mut reader: Box<dyn Read> =
                 if let Some(blob_location) = submatches.get_one::<String>("blob_location") {
                     Box::new(File::open(blob_location)?)
                 } else {
-                    Box::new(io::stdin())
+                    // Read a max of 2MB from std in
+                    Box::new(stdin())
                 };
 
-            // TODO: Turn into chunks
-            anchorage::chunk::create_chunks(&mut reader)
+            let files = anchorage::chunk::create_chunks(&mut reader)?;
+            for (path, _file) in files {
+                println!("{:?}", path);
+            }
+
+            // TODO: Need to hash each file (after encrypting?)
         }
         _ => unreachable!(),
     };
