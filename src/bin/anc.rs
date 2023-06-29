@@ -36,7 +36,9 @@ fn main() -> Result<()> {
                 println!("{:?}", path);
             }
 
-            // TODO: Need to hash each file (after encrypting?)
+            // TODO: Encrypt the file with a shared secret
+            // TODO: Rehash file for content
+            // TODO: Upload to storage
         }
         _ => unreachable!(),
     };

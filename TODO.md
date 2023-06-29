@@ -1,5 +1,5 @@
 # TODO
 
-- [ ] Chunk files
-- [ ] Content address a file
+- [x] Chunk files
+- [x] Content address a file
 - [ ] Endpoints for upload
