@@ -2,4 +2,5 @@
 
 - [x] Chunk files
 - [x] Content address a file
-- [ ] Endpoints for upload
+- [ ] Endpoints for uploading blobs
+- [ ] Endpoints to create meta-notes

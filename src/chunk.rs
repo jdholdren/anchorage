@@ -47,7 +47,9 @@ pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(String, File)>> {
             }
 
             // If we're here, it's time to flush the file to a temp file
-            ret.push(flush(&flush_buffer)?);
+            ret.push(flush(
+                &flush_buffer[(flush_buffer.len() - bytes_to_flush)..flush_buffer.len()],
+            )?);
 
             // Reset the flush buffer
             flush_buffer = vec![0_u8; MAX_FILE_SIZE];
@@ -57,7 +59,9 @@ pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(String, File)>> {
 
     // If there's anything left in the buffer flush it
     if bytes_to_flush > 0 {
-        ret.push(flush(&flush_buffer)?);
+        ret.push(flush(
+            &flush_buffer[(flush_buffer.len() - bytes_to_flush)..flush_buffer.len()],
+        )?);
     }
 
     Ok(ret)
@@ -80,7 +84,7 @@ fn flush(bytes: &[u8]) -> Result<(String, File)> {
     };
     f.write_all(bytes)?;
 
-    Ok((hash, f))
+    Ok((path_str, f))
 }
 
 use std::collections::LinkedList;
@@ -115,7 +119,6 @@ impl<const N: usize> Window<N> {
 
 #[cfg(test)]
 mod create_chunks_tests {
-    use std::fs::File;
     use std::io::BufReader;
 
     use super::*;
@@ -124,26 +127,32 @@ mod create_chunks_tests {
     #[test]
     fn chunks_cat() {
         let f = File::open("./test_samples/cat.jpg").unwrap();
-        let file_length = f.metadata().unwrap().len();
         let mut r = BufReader::new(f);
 
         let chunks = create_chunks(&mut r).unwrap();
-        // assert_eq!(chunks, []);
+        let names: Vec<&str> = chunks.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![std::env::temp_dir()
+                .join("1ea808b45afad786bfa113cb0cbf5ac992299be255f14b99251732eb370c6465")
+                .to_str()
+                .unwrap()]
+        );
     }
 
     // Tests that we get a consistent chunk of a simple string
     #[test]
     fn chunks_string() {
-        let mut bytes: &[u8] =
-            b"When Mr Bilbo Baggins of Bag End announced that he would shortly be \
+        let bytes: &[u8] = b"When Mr Bilbo Baggins of Bag End announced that he would shortly be \
                    celebrating his eleventyifirst birthday with a party of special \
                    magnificence, there was much talk and excitement in Hobbiton.";
-        let len = bytes.len();
 
-        let ranges = create_chunks(&mut bytes).unwrap();
-        // assert_eq!(ranges, [(0, 193)]);
+        let mut chunks = create_chunks(&mut BufReader::new(bytes)).unwrap();
+        assert_eq!(chunks.len(), 1);
 
         // We didn't leave off any bytes
-        // assert_eq!(ranges[ranges.len() - 1].1, len);
+        let mut buf = Vec::new();
+        chunks[0].1.read_to_end(&mut buf).unwrap();
+        assert_eq!(buf, bytes); // What we wrote was the entirety of our byte string
     }
 }
