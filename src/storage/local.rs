@@ -5,8 +5,14 @@ pub struct Local {
     directory: String,
 }
 
-impl crate::storage::Store for Local {
-    fn get(&self, name: &str) -> Result<Vec<u8>, Error> {
+impl Local {
+    pub fn new(directory: String) -> Self {
+        Self { directory }
+    }
+}
+
+impl crate::server::blob::Store for Local {
+    fn get(&self, hash: &str) -> Result<Vec<u8>, Error> {
         todo!();
     }
 
