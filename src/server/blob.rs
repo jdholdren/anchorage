@@ -1,15 +1,13 @@
 use crate::error::Error;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 
 use std::sync::Arc;
 
-use axum::extract::Json as exJson;
+
 use axum::extract::State as exState;
 use axum::{
-    response::IntoResponse,
-    routing::{get, post},
-    Json, Router,
+    response::IntoResponse, Router,
 };
 
 // A store is something to manage blobs of files
@@ -33,6 +31,6 @@ pub fn new_router() -> Router<ServerState> {
 }
 
 // Endpoint for ingesting a
-async fn create_blob(exState(server_state): exState<ServerState>) -> impl IntoResponse {
-    ()
+async fn create_blob(exState(_server_state): exState<ServerState>) -> impl IntoResponse {
+    
 }
