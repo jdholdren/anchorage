@@ -73,7 +73,7 @@ pub fn create_chunks<R: Read>(r: &mut R) -> Result<Vec<(String, File)>> {
 // already exists. If it does, we'll just reuse it
 fn flush(bytes: &[u8]) -> Result<(String, File)> {
     let hash = digest(bytes);
-    let path = std::env::temp_dir().join(&hash);
+    let path = std::env::temp_dir().join(hash);
     let path_str = path.clone().into_os_string().into_string().unwrap();
 
     // Try to open, otherwise create a new file
