@@ -54,7 +54,7 @@ impl CreateBlobRequest {
 
 #[derive(Serialize, Deserialize)]
 pub struct CreatedBlobResponse {
-    created: String,
+    pub created: String,
 }
 
 // Endpoint for ingesting a blob
@@ -79,7 +79,7 @@ async fn create_blob(
     // Store it in the blob store
     state
         .store
-        .put(&hash, data)
+        .put(&blob_name(&hash), data)
         .with_ctx(&ctx, Kind::Internal)?;
 
     Ok(Json(CreatedBlobResponse { created: hash }))
@@ -100,10 +100,17 @@ async fn fetch_blob(
         op: String::from("fetch_blob"),
     };
 
-    let data = state.store.get(&hash).with_ctx(&ctx, Kind::NotFound)?;
+    let data = state
+        .store
+        .get(&blob_name(&hash))
+        .with_ctx(&ctx, Kind::NotFound)?;
 
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD.encode(data);
 
     Ok(Json(BlobResponse { contents: data }))
+}
+
+fn blob_name(hash: &str) -> String {
+    format!("blob-{}", hash)
 }

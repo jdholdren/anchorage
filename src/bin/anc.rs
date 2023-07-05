@@ -1,3 +1,4 @@
+use anchorage::blobserver::Client;
 use anyhow::Result;
 use clap::{arg, Command};
 
@@ -15,10 +16,16 @@ fn cli() -> Command {
                 .about("puts a blob into the server")
                 .arg(arg!([blob_location]).required(false)),
         )
+        .subcommand(
+            Command::new("get")
+                .about("gets a blob from the server")
+                .arg(arg!([blob_location]).required(false)),
+        )
 }
 
 fn main() -> Result<()> {
     // TODO: Take in some env config for where the server is
+    let client = Client::default();
 
     match cli().get_matches().subcommand() {
         Some(("put", submatches)) => {
@@ -32,13 +39,13 @@ fn main() -> Result<()> {
                 };
 
             let files = anchorage::chunk::create_chunks(&mut reader)?;
-            for (path, _file) in files {
-                println!("{:?}", path);
-            }
+            for (_, mut file) in files {
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf)?;
 
-            // TODO: Encrypt the file with a shared secret
-            // TODO: Rehash file for content
-            // TODO: Upload to storage
+                let resp = client.put_blob(&buf)?;
+                println!("{:?}", resp.created);
+            }
         }
         _ => unreachable!(),
     };
