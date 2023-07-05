@@ -7,7 +7,7 @@ use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 
 use tokio::time::Instant;
 
-use anchorage::server;
+use anchorage::blobserver;
 use anchorage::storage;
 
 /**
@@ -36,7 +36,7 @@ async fn main() {
         store: Arc::new(store),
     };
 
-    let blob_routes = server::blob::new_router();
+    let blob_routes = blobserver::new_router();
     // Crazy into/from stuff going on here, but declaring the type so we know it's
     // still Router<AppState>
     let blob_router: Router<AppState> = blob_routes.with_state(app_state.clone().into());
@@ -75,7 +75,7 @@ fn config() -> Config {
 }
 
 // Configures a new blob store from what the config says
-fn store(config: &Config) -> impl server::blob::Store {
+fn store(config: &Config) -> impl blobserver::Store {
     match &config.storage {
         StorageConfig::Local { directory } => storage::Local::new(directory.clone()),
     }
@@ -84,7 +84,7 @@ fn store(config: &Config) -> impl server::blob::Store {
 #[derive(Clone)]
 struct AppState {
     started: Instant,
-    store: Arc<dyn server::blob::Store + Send + Sync>,
+    store: Arc<dyn blobserver::Store + Send + Sync>,
 }
 
 // Splitting an AppState into something specific for the server implementations
@@ -92,9 +92,9 @@ struct AppState {
 // Ignoring clippy warnings here since I want the server module to be independent of the
 // binary's specific types
 #[allow(clippy::from_over_into)]
-impl Into<server::blob::ServerState> for AppState {
-    fn into(self) -> server::blob::ServerState {
-        server::blob::ServerState { store: self.store }
+impl Into<blobserver::State> for AppState {
+    fn into(self) -> blobserver::State {
+        blobserver::State { store: self.store }
     }
 }
 

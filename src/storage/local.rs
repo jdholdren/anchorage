@@ -11,7 +11,7 @@ impl Local {
     }
 }
 
-impl crate::server::blob::Store for Local {
+impl crate::blobserver::Store for Local {
     fn get(&self, _hash: &str) -> Result<Vec<u8>, Error> {
         todo!();
     }

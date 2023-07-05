@@ -1,5 +1,9 @@
+pub mod blobserver;
+pub mod chunk;
 pub mod error;
-pub mod server;
 pub mod storage;
 
-pub mod chunk;
+pub struct ReqContext {
+    user: String,
+    op: String,
+}

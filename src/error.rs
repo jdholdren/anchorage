@@ -3,10 +3,13 @@ use std::fmt::{Debug, Display};
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{ser::SerializeStruct, Serialize};
 
-#[derive(Debug, Serialize)]
+use crate::ReqContext;
+
+#[derive(Debug, Clone, Serialize)]
 pub enum Kind {
     Permission,
     BadRequest,
+    Internal,
 }
 
 impl std::fmt::Display for Kind {
@@ -19,10 +22,10 @@ impl std::fmt::Display for Kind {
 // on what exactly you're trying to do and where it failed
 #[derive(Debug)]
 pub struct Error {
-    pub user: String,                      // What user was trying to operate
-    pub op: &'static str,                  // What operation you were trying to do
-    pub kind: Kind,                        // What kind of error this is
-    pub err: Box<dyn Sync + Send + Debug>, // The inner error
+    pub user: String, // What user was trying to operate
+    pub op: String,   // What operation you were trying to do
+    pub kind: Kind,   // What kind of error this is
+    pub inner_err: Option<Box<dyn Sync + Send + Debug>>, // The inner error
 }
 
 impl Display for Error {
@@ -34,7 +37,12 @@ impl Display for Error {
         write!(w, "user: '{}', ", self.user)?;
         write!(w, "op: '{}', ", self.op)?;
         write!(w, "kind: '{}', ", self.kind)?;
-        write!(w, "err: '{:?}'", self.err)?;
+
+        if let Some(err) = &self.inner_err {
+            write!(w, "err: '{:?}'", err)?;
+        } else {
+            write!(w, "err: nil")?;
+        }
 
         write!(w, " }}")
     }
@@ -50,9 +58,11 @@ impl serde::Serialize for Error {
     {
         let mut s = serializer.serialize_struct("Error", 4)?;
         s.serialize_field("user", &self.user)?;
-        s.serialize_field("op", self.op)?;
+        s.serialize_field("op", &self.op)?;
         s.serialize_field("kind", &self.kind.to_string())?;
-        s.serialize_field("err", &format!("{:?}", self.err))?;
+        if let Some(err) = &self.inner_err {
+            s.serialize_field("err", &format!("{:?}", err))?;
+        }
         s.end()
     }
 }
@@ -62,6 +72,7 @@ impl IntoResponse for Error {
         let status_code = match self.kind {
             Kind::Permission => StatusCode::FORBIDDEN,
             Kind::BadRequest => StatusCode::BAD_REQUEST,
+            Kind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
         (status_code, Json(self)).into_response()
@@ -75,27 +86,34 @@ mod tests {
     #[derive(Debug)]
     struct InnerError {}
 
-    impl std::fmt::Display for InnerError {
-        fn fmt(&self, w: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(w, "some error")
-        }
-    }
-
-    impl std::error::Error for InnerError {}
-
     #[test]
     fn properly_formatted() {
         let err: Box<dyn std::error::Error> = Box::new(Error {
             user: "Bilbo".to_string(),
-            op: "server.Put",
+            op: String::from("server.Put"),
             kind: Kind::Permission,
-            err: Box::new(InnerError {}),
+            inner_err: Some(Box::new(InnerError {})),
         });
 
         let formatted = format!("{}", err);
         assert_eq!(
             formatted,
-            "{ user: 'Bilbo', op: 'server.Put', kind: 'Permission', err: 'some error' }",
+            "{ user: 'Bilbo', op: 'server.Put', kind: 'Permission', err: 'InnerError' }",
         );
+    }
+}
+
+pub trait WithReqContext<T> {
+    fn with_ctx(self, ctx: &ReqContext, kind: Kind) -> Result<T, Error>;
+}
+
+impl<T, E: Debug + Send + Sync + 'static> WithReqContext<T> for Result<T, E> {
+    fn with_ctx(self, ctx: &ReqContext, kind: Kind) -> Result<T, Error> {
+        self.map_err(|err| Error {
+            op: ctx.op.clone(),
+            user: ctx.user.clone(),
+            kind,
+            inner_err: Some(Box::new(err)),
+        })
     }
 }
