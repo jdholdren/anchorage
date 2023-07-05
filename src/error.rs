@@ -10,6 +10,7 @@ pub enum Kind {
     Permission,
     BadRequest,
     Internal,
+    NotFound,
 }
 
 impl std::fmt::Display for Kind {
@@ -73,6 +74,7 @@ impl IntoResponse for Error {
             Kind::Permission => StatusCode::FORBIDDEN,
             Kind::BadRequest => StatusCode::BAD_REQUEST,
             Kind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            Kind::NotFound => StatusCode::NOT_FOUND,
         };
 
         (status_code, Json(self)).into_response()

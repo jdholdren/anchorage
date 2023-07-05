@@ -10,9 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use std::sync::Arc;
 
-use axum::extract::Json as exJson;
 use axum::extract::State as exState;
-use axum::{routing::post, Json, Router};
+use axum::extract::{Json as exJson, Path};
+use axum::{
+    routing::{get, put},
+    Json, Router,
+};
 
 use base64::{engine::general_purpose, Engine as _};
 use sha256::digest;
@@ -29,7 +32,9 @@ pub struct State {
 }
 
 pub fn new_router() -> Router<State> {
-    Router::new().route("/blob", post(create_blob))
+    Router::new()
+        .route("/blob", put(create_blob))
+        .route("/blob/:hash", get(fetch_blob))
 }
 
 #[derive(Deserialize)]
@@ -48,15 +53,15 @@ impl CreateBlobRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreateBlobResponse {
+pub struct CreatedBlobResponse {
     created: String,
 }
 
-// Endpoint for ingesting a
+// Endpoint for ingesting a blob
 async fn create_blob(
     exState(state): exState<State>,
     exJson(body): exJson<CreateBlobRequest>,
-) -> Result<Json<CreateBlobResponse>, Error> {
+) -> Result<Json<CreatedBlobResponse>, Error> {
     let ctx = ReqContext {
         user: String::from("unknown"),
         op: String::from("create_blob"),
@@ -77,5 +82,28 @@ async fn create_blob(
         .put(&hash, data)
         .with_ctx(&ctx, Kind::Internal)?;
 
-    Ok(Json(CreateBlobResponse { created: hash }))
+    Ok(Json(CreatedBlobResponse { created: hash }))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BlobResponse {
+    contents: String,
+}
+
+// Endpoint for fetching a stored blob
+async fn fetch_blob(
+    Path(hash): Path<String>,
+    exState(state): exState<State>,
+) -> Result<Json<BlobResponse>, Error> {
+    let ctx = ReqContext {
+        user: String::from("unknown"),
+        op: String::from("fetch_blob"),
+    };
+
+    let data = state.store.get(&hash).with_ctx(&ctx, Kind::NotFound)?;
+
+    // Decode the base64 encoded data
+    let data = general_purpose::STANDARD_NO_PAD.encode(data);
+
+    Ok(Json(BlobResponse { contents: data }))
 }
