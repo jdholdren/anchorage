@@ -19,3 +19,6 @@ Cargo.lock
 /target
 
 *.rustfmt
+
+# To avoid any test files store
+/file_store
