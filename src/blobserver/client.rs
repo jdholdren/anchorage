@@ -24,13 +24,10 @@ impl Client {
     }
 
     pub async fn get_blob(&self, hash: &str) -> Result<BlobResponse> {
-        let resp: BlobResponse = self
-            .http
-            .get(format!("{}/blobserver/blob/{}", self.remote, hash))
-            .send()
-            .await?
-            .json()
-            .await?;
+        let path = format!("{}/blobstore/blob/{}", self.remote, hash);
+        println!("path: {}", path);
+
+        let resp: BlobResponse = self.http.get(path).send().await?.json().await?;
 
         Ok(resp)
     }

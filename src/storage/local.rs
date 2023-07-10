@@ -17,6 +17,7 @@ impl Local {
 impl crate::blobserver::Store for Local {
     fn get(&self, hash: &str) -> Result<Vec<u8>> {
         let path = Path::new(&self.directory).join(hash);
+        println!("{}", path.display());
 
         let mut buf = vec![];
         let mut f = File::open(path)?;

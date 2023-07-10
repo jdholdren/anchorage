@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 
 use tokio::time::Instant;
+use tower_http::trace::TraceLayer;
 
 use anchorage::blobserver;
 use anchorage::storage;
@@ -47,7 +48,9 @@ async fn main() {
         .with_state(app_state);
 
     // initialize tracing
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
 
     let formatted = format!("0.0.0.0:{}", config.port);
     println!("listening on: {}", formatted);

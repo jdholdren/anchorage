@@ -87,7 +87,7 @@ async fn create_blob(
 
 #[derive(Serialize, Deserialize)]
 pub struct BlobResponse {
-    contents: String,
+    pub contents: String,
 }
 
 // Endpoint for fetching a stored blob
@@ -100,6 +100,8 @@ async fn fetch_blob(
         op: String::from("fetch_blob"),
     };
 
+    println!("hash: {}", hash);
+
     let data = state
         .store
         .get(&blob_name(&hash))
@@ -108,7 +110,9 @@ async fn fetch_blob(
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD.encode(data);
 
-    Ok(Json(BlobResponse { contents: data }))
+    let resp = Ok(Json(BlobResponse { contents: data }));
+
+    resp
 }
 
 fn blob_name(hash: &str) -> String {

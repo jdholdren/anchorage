@@ -19,11 +19,12 @@ fn cli() -> Command {
         .subcommand(
             Command::new("get")
                 .about("gets a blob from the server")
-                .arg(arg!([blob_location]).required(false)),
+                .arg(arg!([hash]).required(true)),
         )
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // TODO: Take in some env config for where the server is
     let client = Client::default();
 
@@ -46,6 +47,11 @@ fn main() -> Result<()> {
                 let resp = client.put_blob(&buf)?;
                 println!("{:?}", resp.created);
             }
+        }
+        Some(("get", submatches)) => {
+            let hash = submatches.get_one::<String>("hash").unwrap();
+            let resp = client.get_blob(hash).await?;
+            println!("{:?}", resp.contents)
         }
         _ => unreachable!(),
     };
