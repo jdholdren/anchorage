@@ -1,18 +1,25 @@
 use std::fs::File;
 use std::sync::Arc;
 
+use axum::middleware::{self, Next};
 use serde::{Deserialize, Serialize};
 
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
-
+use axum::{
+    body::{Body, Bytes},
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
+use hyper::Request;
 use tokio::time::Instant;
-use tower_http::trace::TraceLayer;
 
 use anchorage::blobserver;
 use anchorage::storage;
 
 /**
- * This binary runs the server
+ * This binary runs the blob server.
  **/
 
 #[derive(Debug, Deserialize)]
@@ -44,8 +51,9 @@ async fn main() {
 
     let router = Router::new()
         .route("/healthz", get(healthz))
-        .nest("/blobstore", blob_router)
-        .with_state(app_state);
+        .merge(blob_router)
+        .with_state(app_state)
+        .layer(middleware::from_fn(print_request_response));
 
     // initialize tracing
     tracing_subscriber::fmt()
@@ -59,6 +67,43 @@ async fn main() {
         .serve(router.into_make_service())
         .await
         .unwrap();
+}
+
+async fn print_request_response<B>(
+    req: Request<B>,
+    next: Next<B>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let res = next.run(req).await;
+
+    let (parts, body) = res.into_parts();
+    let bytes = buffer_and_print("response", body).await?;
+    let res = Response::from_parts(parts, Body::from(bytes));
+
+    println!("response code: {}", res.status());
+
+    Ok(res)
+}
+
+async fn buffer_and_print<B>(direction: &str, body: B) -> Result<Bytes, (StatusCode, String)>
+where
+    B: axum::body::HttpBody<Data = Bytes>,
+    B::Error: std::fmt::Display,
+{
+    let bytes = match hyper::body::to_bytes(body).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("failed to read {} body: {}", direction, err),
+            ));
+        }
+    };
+
+    if let Ok(body) = std::str::from_utf8(&bytes) {
+        tracing::debug!("{} body = {:?}", direction, body);
+    }
+
+    Ok(bytes)
 }
 
 fn config() -> Config {
@@ -84,6 +129,7 @@ fn store(config: &Config) -> impl blobserver::Store {
     }
 }
 
+// AppState is passed around to every handler as the main innards of the service.
 #[derive(Clone)]
 struct AppState {
     started: Instant,

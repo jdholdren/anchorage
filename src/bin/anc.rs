@@ -12,12 +12,12 @@ fn cli() -> Command {
         .about("interacts with a given anchorage server")
         .subcommand_required(true)
         .subcommand(
-            Command::new("put")
-                .about("puts a blob into the server")
+            Command::new("post-blob")
+                .about("sends a new a blob into the server")
                 .arg(arg!([blob_location]).required(false)),
         )
         .subcommand(
-            Command::new("get")
+            Command::new("get-blob")
                 .about("gets a blob from the server")
                 .arg(arg!([hash]).required(true)),
         )
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let client = Client::default();
 
     match cli().get_matches().subcommand() {
-        Some(("put", submatches)) => {
+        Some(("post-blob", submatches)) => {
             // Read from either std in or read in the file
             let mut reader: Box<dyn Read> =
                 if let Some(blob_location) = submatches.get_one::<String>("blob_location") {
@@ -44,14 +44,14 @@ async fn main() -> Result<()> {
                 let mut buf = Vec::new();
                 file.read_to_end(&mut buf)?;
 
-                let resp = client.put_blob(&buf)?;
+                let resp = client.put_blob(&buf).await?;
                 println!("{:?}", resp.created);
             }
         }
-        Some(("get", submatches)) => {
+        Some(("get-blob", submatches)) => {
             let hash = submatches.get_one::<String>("hash").unwrap();
             let resp = client.get_blob(hash).await?;
-            println!("{:?}", resp.contents)
+            print!("{:?}", resp.contents)
         }
         _ => unreachable!(),
     };

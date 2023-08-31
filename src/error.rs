@@ -1,11 +1,11 @@
 use std::fmt::{Debug, Display};
 
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use serde::{ser::SerializeStruct, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 use crate::ReqContext;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Kind {
     Permission,
     BadRequest,
@@ -19,14 +19,14 @@ impl std::fmt::Display for Kind {
     }
 }
 
-// Error type that we can use everywhere, should provide some documentation
-// on what exactly you're trying to do and where it failed
-#[derive(Debug)]
+/// Error type that we can use everywhere, should provide some documentation
+/// on what exactly you're trying to do and where it failed.
+#[derive(Debug, Deserialize)]
 pub struct Error {
-    pub user: String, // What user was trying to operate
-    pub op: String,   // What operation you were trying to do
-    pub kind: Kind,   // What kind of error this is
-    pub inner_err: Option<Box<dyn Sync + Send + Debug>>, // The inner error
+    pub user: String,              // What user was trying to operate
+    pub op: String,                // What operation you were trying to do
+    pub kind: Kind,                // What kind of error this is
+    pub inner_err: Option<String>, // The inner error
 }
 
 impl Display for Error {
@@ -81,12 +81,23 @@ impl IntoResponse for Error {
     }
 }
 
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Self {
+            op: value
+                .url()
+                .map(|url| url.path().to_owned())
+                .unwrap_or("unspecified".to_owned()),
+            user: String::new(),
+            kind: Kind::Internal,
+            inner_err: Some(value.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[derive(Debug)]
-    struct InnerError {}
 
     #[test]
     fn properly_formatted() {
@@ -94,13 +105,13 @@ mod tests {
             user: "Bilbo".to_string(),
             op: String::from("server.Put"),
             kind: Kind::Permission,
-            inner_err: Some(Box::new(InnerError {})),
+            inner_err: Some("inner error".to_owned()),
         });
 
         let formatted = format!("{}", err);
         assert_eq!(
             formatted,
-            "{ user: 'Bilbo', op: 'server.Put', kind: 'Permission', err: 'InnerError' }",
+            "{ user: 'Bilbo', op: 'server.Put', kind: 'Permission', err: 'inner error' }",
         );
     }
 }
@@ -109,13 +120,13 @@ pub trait WithReqContext<T> {
     fn with_ctx(self, ctx: &ReqContext, kind: Kind) -> Result<T, Error>;
 }
 
-impl<T, E: Debug + Send + Sync + 'static> WithReqContext<T> for Result<T, E> {
+impl<T, E: Display> WithReqContext<T> for Result<T, E> {
     fn with_ctx(self, ctx: &ReqContext, kind: Kind) -> Result<T, Error> {
         self.map_err(|err| Error {
             op: ctx.op.clone(),
             user: ctx.user.clone(),
             kind,
-            inner_err: Some(Box::new(err)),
+            inner_err: Some(err.to_string()),
         })
     }
 }

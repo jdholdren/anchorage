@@ -10,10 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use std::sync::Arc;
 
-use axum::extract::State as exState;
-use axum::extract::{Json as exJson, Path};
 use axum::{
-    routing::{get, put},
+    extract::{DefaultBodyLimit, Json as exJson, Path, State as exState},
+    routing::{get, post},
     Json, Router,
 };
 
@@ -33,11 +32,12 @@ pub struct State {
 
 pub fn new_router() -> Router<State> {
     Router::new()
-        .route("/blob", put(create_blob))
+        .route("/blob", post(create_blob))
         .route("/blob/:hash", get(fetch_blob))
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 11)) // 11MB
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CreateBlobRequest {
     data: String,
 }
@@ -53,7 +53,7 @@ impl CreateBlobRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreatedBlobResponse {
+pub struct CreateBlobResponse {
     pub created: String,
 }
 
@@ -61,7 +61,7 @@ pub struct CreatedBlobResponse {
 async fn create_blob(
     exState(state): exState<State>,
     exJson(body): exJson<CreateBlobRequest>,
-) -> Result<Json<CreatedBlobResponse>, Error> {
+) -> Result<Json<CreateBlobResponse>, Error> {
     let ctx = ReqContext {
         user: String::from("unknown"),
         op: String::from("create_blob"),
@@ -82,7 +82,7 @@ async fn create_blob(
         .put(&blob_name(&hash), data)
         .with_ctx(&ctx, Kind::Internal)?;
 
-    Ok(Json(CreatedBlobResponse { created: hash }))
+    Ok(Json(CreateBlobResponse { created: hash }))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -110,9 +110,7 @@ async fn fetch_blob(
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD.encode(data);
 
-    let resp = Ok(Json(BlobResponse { contents: data }));
-
-    resp
+    Ok(Json(BlobResponse { contents: data }))
 }
 
 fn blob_name(hash: &str) -> String {
