@@ -1,4 +1,4 @@
-// Different implementations of a blob store
+/// Different implementations of blob storage.
 
 mod local;
 pub use local::*;

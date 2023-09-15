@@ -1,22 +1,22 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use axum::middleware::{self, Next};
 use serde::{Deserialize, Serialize};
 
 use axum::{
-    body::{Body, Bytes},
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::get,
     Json, Router,
+    middleware::{self, Next},
 };
 use hyper::Request;
 use tokio::time::Instant;
 
-use anchorage::blobserver;
 use anchorage::storage;
+use crate::blobserver;
+use tracing::{info, event};
 
 /**
  * This binary runs the blob server.
@@ -53,11 +53,12 @@ async fn main() {
         .route("/healthz", get(healthz))
         .merge(blob_router)
         .with_state(app_state)
-        .layer(middleware::from_fn(print_request_response));
+        .layer(middleware::from_fn(log_request_response));
 
     // initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
+        .json()
         .init();
 
     let formatted = format!("0.0.0.0:{}", config.port);
@@ -67,43 +68,6 @@ async fn main() {
         .serve(router.into_make_service())
         .await
         .unwrap();
-}
-
-async fn print_request_response<B>(
-    req: Request<B>,
-    next: Next<B>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let res = next.run(req).await;
-
-    let (parts, body) = res.into_parts();
-    let bytes = buffer_and_print("response", body).await?;
-    let res = Response::from_parts(parts, Body::from(bytes));
-
-    println!("response code: {}", res.status());
-
-    Ok(res)
-}
-
-async fn buffer_and_print<B>(direction: &str, body: B) -> Result<Bytes, (StatusCode, String)>
-where
-    B: axum::body::HttpBody<Data = Bytes>,
-    B::Error: std::fmt::Display,
-{
-    let bytes = match hyper::body::to_bytes(body).await {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("failed to read {} body: {}", direction, err),
-            ));
-        }
-    };
-
-    if let Ok(body) = std::str::from_utf8(&bytes) {
-        tracing::debug!("{} body = {:?}", direction, body);
-    }
-
-    Ok(bytes)
 }
 
 fn config() -> Config {
@@ -156,4 +120,23 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     Json(HealthzResponse {
         uptime_secs: state.started.elapsed().as_secs(),
     })
+}
+
+async fn log_request_response<B>(
+    req: Request<B>,
+    next: Next<B>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    info!(target: "request received", method = req.method().as_str(), path = req.uri().path());
+    let res = next.run(req).await;
+
+    let resp_code = res.status().as_u16();
+    let level: tracing::Level = if resp_code < 200 || resp_code > 299 {
+        tracing::Level::INFO
+    } else {
+        tracing::Level::ERROR
+    };
+
+    event!(tracing::Level::INFO, code = res.status().as_u16(), "response");
+
+    Ok(res)
 }
