@@ -12,7 +12,7 @@ fn cli() -> Command {
         .about("interacts with a given anchorage server")
         .subcommand_required(true)
         .subcommand(
-            Command::new("post-blob")
+            Command::new("put-blob")
                 .about("sends a new a blob into the server")
                 .arg(arg!([blob_location]).required(false)),
         )
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let client = Client::default();
 
     match cli().get_matches().subcommand() {
-        Some(("post-blob", submatches)) => {
+        Some(("put-blob", submatches)) => {
             // Read from either std in or read in the file
             let mut reader: Box<dyn Read> =
                 if let Some(blob_location) = submatches.get_one::<String>("blob_location") {

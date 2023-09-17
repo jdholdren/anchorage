@@ -70,15 +70,15 @@ async fn create_blob(
         .map_err(|e| Error::from_err("error decoding body", e, Kind::BadRequest))?;
 
     // The name of the file will be the hash of the contents
-    let hash = digest(data.as_slice());
+    let id = format!("sha256-{}", digest(data.as_slice()));
 
     // Store it in the blob store
     state
         .store
-        .put(&hash, data)
+        .put(&id, data)
         .map_err(|e| Error::from_err("error storing blob", e, Kind::BadRequest))?;
 
-    Ok(Json(CreateBlobResponse { created: hash }))
+    Ok(Json(CreateBlobResponse { created: id }))
 }
 
 #[derive(Serialize, Deserialize)]
