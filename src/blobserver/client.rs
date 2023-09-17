@@ -4,6 +4,9 @@ use std::result::Result;
 
 use crate::blobserver::server;
 use crate::error::Error;
+use crate::Node;
+
+use super::server::CreateNodeRequest;
 
 pub struct Client {
     remote: String,
@@ -45,7 +48,7 @@ impl Client {
             data: general_purpose::STANDARD_NO_PAD.encode(data),
         };
         let path = format!("{}/blob", self.remote);
-        handle_resp(self.client.post(path).json(&body).send().await?).await
+        handle_resp(self.client.put(path).json(&body).send().await?).await
     }
 
     /// Calls the server to retrieve a blob.
@@ -54,5 +57,11 @@ impl Client {
     pub async fn get_blob(&self, hash: &str) -> Result<server::BlobResponse, Error> {
         let path = format!("{}/blob/{}", self.remote, hash);
         handle_resp(self.client.get(path).send().await?).await
+    }
+
+    /// Calls the server to create a node.
+    pub async fn create_node(&self, node: CreateNodeRequest) -> Result<Node, Error> {
+        let path = format!("{}/node", self.remote);
+        handle_resp(self.client.post(path).json(&node).send().await?).await
     }
 }

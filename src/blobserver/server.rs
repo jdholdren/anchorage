@@ -1,33 +1,39 @@
 use std::sync::Arc;
 use std::{fmt::Debug, result::Result};
 
+use axum::routing::post;
 use serde::{Deserialize, Serialize};
 
 use axum::{
     extract::{DefaultBodyLimit, Json as exJson, Path, State as exState},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, put},
     Json, Router,
 };
 use hyper::StatusCode;
+use tracing::debug;
+use uuid::Uuid;
 
 use crate::{
     error::{Error, Kind},
     Storage,
 };
+use crate::{Node, NodeStore, NodeType};
 
 use base64::{engine::general_purpose, Engine as _};
 use sha256::digest;
 
 #[derive(Clone)]
 pub struct State {
-    pub store: Arc<dyn Storage + Send + Sync>,
+    pub blob_store: Arc<dyn Storage + Send + Sync>,
+    pub node_store: Arc<dyn NodeStore + Send + Sync>,
 }
 
 pub fn new_router() -> Router<State> {
     Router::new()
-        .route("/blob", post(create_blob))
+        .route("/blob", put(create_blob))
         .route("/blob/:hash", get(fetch_blob))
+        .route("/node", post(create_node))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 11)) // 11MB
 }
 
@@ -74,7 +80,7 @@ async fn create_blob(
 
     // Store it in the blob store
     state
-        .store
+        .blob_store
         .put(&id, data)
         .map_err(|e| Error::from_err("error storing blob", e, Kind::BadRequest))?;
 
@@ -106,7 +112,7 @@ async fn fetch_blob(
     exState(state): exState<State>,
 ) -> Result<impl IntoResponse, Error> {
     let data_res = state
-        .store
+        .blob_store
         .get(&hash)
         .map_err(|e| Error::from_err("error finding blob", e, Kind::NotFound))?;
 
@@ -114,4 +120,30 @@ async fn fetch_blob(
     let data = general_purpose::STANDARD_NO_PAD.encode(data_res);
 
     Ok((StatusCode::CREATED, Json(BlobResponse { contents: data })))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CreateNodeRequest {
+    pub node_type: NodeType,
+    pub blobs: Vec<String>,
+}
+
+async fn create_node(
+    exState(state): exState<State>,
+    exJson(body): exJson<CreateNodeRequest>,
+) -> Result<(StatusCode, Json<Node>), Error> {
+    let node = Node {
+        id: uuid(),
+        blobs: body.blobs,
+        node_type: body.node_type,
+    };
+    print!("{:?}", node);
+
+    state.node_store.put(&node.id, &node)?;
+
+    Ok((StatusCode::CREATED, Json(node)))
+}
+
+fn uuid() -> String {
+    format!("sha256-{}", digest(Uuid::new_v4().to_string()))
 }

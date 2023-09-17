@@ -2,7 +2,8 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use crate::StorageError;
+use crate::error::{Error, Kind, WithKind};
+use crate::{Node, StorageError};
 
 // Prefixes for the different types of files.
 //
@@ -14,6 +15,10 @@ const NODE_PREFIX: &str = "node-";
 // Constructs an id from a blob hash with the prefix
 fn blob_id(hash: &str) -> String {
     format!("{}{}", BLOB_PREFIX, hash)
+}
+// Constructs an id from a blob hash with the prefix
+fn node_id(hash: &str) -> String {
+    format!("{}{}", NODE_PREFIX, hash)
 }
 
 /// An implementation of a blobstore that is contained in a single,
@@ -68,12 +73,36 @@ impl From<std::io::Error> for StorageError {
     }
 }
 
-#[cfg(test)]
-mod local_storage_tests {
-    use super::*;
+impl crate::NodeStore for Local {
+    fn get(&self, hash: &str) -> Result<Node, Error> {
+        let path = Path::new(&self.directory).join(node_id(hash));
 
-    #[test]
-    fn namespaces_blobs() {
-        let path = std::env::temp_dir().join(hash);
+        let f = File::open(path).map_err(|e| {
+            let kind = if e.kind() == std::io::ErrorKind::NotFound {
+                Kind::NotFound
+            } else {
+                Kind::Internal
+            };
+
+            Error::from_err("error finding node", e, kind)
+        })?;
+
+        serde_json::from_reader(f)
+            .map_err(|e| Error::from_err("error decoding json", e, Kind::Internal))
+    }
+
+    fn put(&self, hash: &str, node: &Node) -> Result<(), Error> {
+        // If the file is there, return early
+        let path = Path::new(&self.directory).join(node_id(hash));
+        if File::open(&path).is_ok() {
+            return Ok(());
+        }
+
+        let f = File::create(&path).with_kind("error creating file", Kind::Internal)?;
+        serde_json::to_writer_pretty(f, node).with_kind("error writing json", Kind::Internal)?;
+
+        // Otherwise, create the file and write the data to it
+
+        Ok(())
     }
 }

@@ -14,7 +14,7 @@ use axum::{
 use hyper::Request;
 use tokio::time::Instant;
 
-use anchorage::blobserver::server;
+use anchorage::{blobserver::server, NodeStore};
 use anchorage::{storage, Storage};
 use tracing::{error, info};
 
@@ -37,11 +37,12 @@ enum StorageConfig {
 #[tokio::main]
 async fn main() {
     let config = config();
-    let store = store(&config);
+    let store = Arc::new(store(&config));
 
     let app_state = AppState {
         started: Instant::now(),
-        store: Arc::new(store),
+        blob_store: store.clone(),
+        node_store: store.clone(),
     };
 
     let blob_routes = server::new_router();
@@ -87,7 +88,7 @@ fn config() -> Config {
 }
 
 // Configures a new blob store from what the config says
-fn store(config: &Config) -> impl Storage {
+fn store(config: &Config) -> storage::Local {
     match &config.storage {
         StorageConfig::Local { directory } => storage::Local::new(directory.clone()),
     }
@@ -97,7 +98,8 @@ fn store(config: &Config) -> impl Storage {
 #[derive(Clone)]
 struct AppState {
     started: Instant,
-    store: Arc<dyn Storage + Send + Sync>,
+    blob_store: Arc<dyn Storage + Send + Sync>,
+    node_store: Arc<dyn NodeStore + Send + Sync>,
 }
 
 // Splitting an AppState into something specific for the server implementations
@@ -107,7 +109,10 @@ struct AppState {
 #[allow(clippy::from_over_into)]
 impl Into<server::State> for AppState {
     fn into(self) -> server::State {
-        server::State { store: self.store }
+        server::State {
+            blob_store: self.blob_store,
+            node_store: self.node_store,
+        }
     }
 }
 
@@ -131,7 +136,7 @@ async fn log_request_response<B>(
 
     let resp_code = res.status().as_u16();
     // Has to be called different ways since you can't use `event!` without a constant value for level
-    if resp_code < 200 || resp_code > 299 {
+    if !(200..=299).contains(&resp_code) {
         info!(code = resp_code, "response");
     } else {
         error!(code = resp_code, "response");

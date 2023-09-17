@@ -132,6 +132,16 @@ impl IntoResponse for Error {
     }
 }
 
+pub trait WithKind<T> {
+    fn with_kind(self, msg: &str, kind: Kind) -> Result<T, Error>;
+}
+
+impl<T, E: std::error::Error + Sync + Send + 'static> WithKind<T> for Result<T, E> {
+    fn with_kind(self, msg: &str, kind: Kind) -> Result<T, Error> {
+        self.map_err(|e| Error::from_err(msg, e, kind))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
