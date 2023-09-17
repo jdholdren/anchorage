@@ -19,13 +19,17 @@ impl std::fmt::Display for Kind {
 
 /// InnerErr wraps an optional pointer to another error in a long chain of
 /// errors. It can be None if the error you're looking at is the source of the error.
+///
+/// Needs to implement send and sync so the larger type, Error, can also implement those.
 #[derive(Debug)]
-pub struct InnerErr(pub Box<dyn std::error::Error>);
+pub struct InnerErr(pub Box<dyn std::error::Error + Send + Sync>);
 
 impl<'de> serde::Deserialize<'de> for InnerErr {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        Ok(InnerErr(Box::new(StrError(s))))
+        let e = Error::from_msg(&s, Kind::Internal);
+
+        Ok(InnerErr(Box::new(e)))
     }
 }
 
@@ -33,34 +37,30 @@ impl<'de> serde::Deserialize<'de> for InnerErr {
 /// on what exactly you're trying to do and where it failed.
 #[derive(Debug, Deserialize)]
 pub struct Error {
-    pub user: Option<String>,        // What user was trying to operate
-    pub message: String,
     pub op: Option<String>,                // What operation you were trying to do
+    pub message: String,
     pub kind: Kind,                // What kind of error this is
     pub inner_err: Option<InnerErr>, 
 }
 
 impl Error {
     // The common constructor of an Error from a generic other error
-    pub fn from_err(msg: &str, err: Box<dyn std::error::Error>, kind: Kind) -> Self {
+    pub fn from_err(msg: &str, err: Box<dyn std::error::Error + Send + Sync>, kind: Kind) -> Self {
         Error {
-            user: None,
             message: msg.to_owned(),
             inner_err: Some(InnerErr(err)),
             kind,
             op: None,
         }
     }
-}
 
-impl<T: std::error::Error> From<T> for Error {
-    fn from(value: T) -> Self {
-        Self {
-            op: None,
-            kind: Kind::Internal, // Just bad internal things by default
-            message: value.to_string(),
+    // Constructor for making an error from a string
+    pub fn from_msg(msg: &str, kind: Kind) -> Self {
+        Error {
+            message: msg.to_owned(),
             inner_err: None,
-            user: None,
+            kind,
+            op: None,
         }
     }
 }
@@ -71,11 +71,8 @@ impl Display for Error {
     fn fmt(&self, w: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(w, "{{ ")?;
 
-        if let Some(user) = &self.user {
-            write!(w, "user: '{:?}'", user)?;
-        }
         if let Some(op) = &self.op {
-        write!(w, "op: '{}', ", op)?;
+            write!(w, "op: '{}', ", op)?;
         }
         write!(w, "kind: '{}', ", self.kind)?;
 
@@ -87,7 +84,7 @@ impl Display for Error {
     }
 }
 
-// impl std::error::Error for Error {}
+impl std::error::Error for Error {}
 
 // Custom serialization for serde to handle error trait object
 impl serde::Serialize for Error {
@@ -96,7 +93,6 @@ impl serde::Serialize for Error {
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("Error", 4)?;
-        s.serialize_field("user", &self.user)?;
         s.serialize_field("op", &self.op)?;
         s.serialize_field("kind", &self.kind.to_string())?;
         if let Some(err) = &self.inner_err {
@@ -106,6 +102,14 @@ impl serde::Serialize for Error {
     }
 }
 
+// Makes this a valid return type for use with the client 
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Error::from_err("error with reqwest", Box::new(value), Kind::Internal)
+    }
+}
+
+// Makes this a type that can be returned from an axum handler.
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         let status_code = match self.kind {
@@ -119,29 +123,19 @@ impl IntoResponse for Error {
     }
 }
 
-#[derive(Debug)]
-pub struct StrError(String);
-
-impl std::error::Error for StrError {}
-
-impl std::fmt::Display for StrError {
-    fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(w, "{}", self.0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use super::*;
 
     #[test]
     fn properly_formatted() {
         let err = Error {
-            user: Some("Bilbo".to_string()),
             op: Some(String::from("server.Put")),
             kind: Kind::Permission,
             message: String::from("uh oh"),
-            inner_err: Some(InnerErr(Box::new(StrError(String::from("inner error"))))),
+            inner_err: Some(InnerErr(Box::new(io::Error::last_os_error()))),
         };
 
         let formatted = format!("{}", err);

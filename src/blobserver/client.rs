@@ -3,8 +3,7 @@ use serde::de::DeserializeOwned;
 use std::result::Result;
 
 use crate::error::Error;
-
-use super::{BlobResponse, CreateBlobRequest, CreateBlobResponse};
+use crate::blobserver::server;
 
 pub struct Client {
     remote: String,
@@ -41,8 +40,8 @@ impl Client {
     /// The request is encoded base64 for safe transfer.
     /// If the blob already exists, this is an idempotent response:
     /// the same struct will come back with the same ID.
-    pub async fn put_blob(&self, data: &[u8]) -> Result<CreateBlobResponse, Error> {
-        let body = CreateBlobRequest {
+    pub async fn put_blob(&self, data: &[u8]) -> Result<server::CreateBlobResponse, Error> {
+        let body = server::CreateBlobRequest {
             data: general_purpose::STANDARD_NO_PAD.encode(data),
         };
         let path = format!("{}/blob", self.remote);
@@ -52,7 +51,7 @@ impl Client {
     /// Calls the server to retrieve a blob.
     ///
     /// If it's not found, expect a 404 status error.
-    pub async fn get_blob(&self, hash: &str) -> Result<BlobResponse, Error> {
+    pub async fn get_blob(&self, hash: &str) -> Result<server::BlobResponse, Error> {
         let path = format!("{}/blob/{}", self.remote, hash);
         handle_resp(self.client.get(path).send().await?).await
     }

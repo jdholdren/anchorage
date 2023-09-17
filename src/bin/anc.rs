@@ -1,4 +1,4 @@
-use anchorage::blobserver::Client;
+use anchorage::blobserver::client::Client;
 use anyhow::Result;
 use clap::{arg, Command};
 

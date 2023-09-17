@@ -1,8 +1,8 @@
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 
-use crate::error::{Error, Kind};
+use crate::StorageError;
 
 /// An implementation of a blobstore that is contained in a single,
 /// local directory.
@@ -16,31 +16,30 @@ impl Local {
     }
 }
 
-impl crate::blob::Store for Local {
-    fn get(&self, hash: &str) -> Result<Vec<u8>, Error> {
+impl crate::Storage for Local {
+    fn get(&self, hash: &str) -> Result<Vec<u8>, StorageError> {
         let path = Path::new(&self.directory).join(hash);
 
         tracing::debug!("path: {}", path.display());
 
         let mut buf = vec![];
         let mut f = File::open(path).map_err(|e| {
-            let kind = match e.kind() {
-                io::ErrorKind::NotFound => Kind::NotFound,
-                _ => Kind::Internal,
-            };
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return StorageError::NotFound;
+            }
 
-            Error::from_err("error opening file", Box::new(e), kind)
+            StorageError::IO(e.to_string())
         })?;
         f.read_to_end(&mut buf)?;
 
         Ok(buf)
     }
 
-    fn put(&self, hash: &str, data: Vec<u8>) -> Result<(), Error> {
+    fn put(&self, hash: &str, data: Vec<u8>) -> Result<(), StorageError> {
         // If the file is there, return early
         let path = Path::new(&self.directory).join(hash);
         if File::open(&path).is_ok() {
-            return Ok(());
+            return Ok(()  );
         }
 
         // Otherwise, create the file and write the data to it
@@ -48,5 +47,11 @@ impl crate::blob::Store for Local {
         f.write_all(&data[..])?;
 
         Ok(())
+    }
+}
+
+impl From<std::io::Error> for StorageError {
+    fn from(value: std::io::Error) -> Self {
+        Self::IO(value.to_string())
     }
 }

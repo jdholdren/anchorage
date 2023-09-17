@@ -4,43 +4,21 @@ use std::result::Result;
 use serde::{Deserialize, Serialize};
 
 use axum::{
-    extract::{DefaultBodyLimit, Json as exJson, Path, State as exState, FromRequestParts},
+    extract::{DefaultBodyLimit, Json as exJson, Path, State as exState},
     routing::{get, post},
     Json, Router,
-    async_trait,
-    http,response::IntoResponse,
+    response::IntoResponse,
 };
 use hyper::StatusCode;
 
-use crate::error::{Error, Kind};
-use crate::ReqContext;
-use crate::blob::Service;
+use crate::{error::{Error, Kind}, Storage};
 
 use base64::{engine::general_purpose, Engine as _};
 use sha256::digest;
 
-// Custom extractor to add context to requests
-struct ContextExtractor(ReqContext);
-
-#[async_trait]
-impl<S> FromRequestParts<S> for ContextExtractor {
-    type Rejection = (StatusCode, &'static str);
-
-    async fn from_request_parts(
-        parts: &mut http::request::Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
-        Ok(ContextExtractor(ReqContext{
-            user: String::from("unknown"),
-            op: parts.uri.to_string(),
-        }))
-    }
-}
-
-
 #[derive(Clone)]
 pub struct State {
-    pub store: Arc<Service>,
+    pub store: Arc<dyn Storage + Send + Sync>,
 }
 
 pub fn new_router() -> Router<State> {
@@ -77,17 +55,16 @@ pub struct CreateBlobResponse {
 
 // Endpoint for ingesting a blob
 async fn create_blob(
-    ContextExtractor(ctx): ContextExtractor,
     exState(state): exState<State>,
     exJson(body): exJson<CreateBlobRequest>,
 ) -> Result<Json<CreateBlobResponse>, Error> {
     body.validate()
-        .map_err(|e| ctx.e(Some(e.to_string()), Kind::BadRequest))?;
+        .map_err(|e| Error::from_msg(e, Kind::BadRequest))?;
 
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD
         .decode(body.data)
-        .map_err(|e| ctx.e(Some(e.to_string()), Kind::BadRequest))?;
+        .map_err(|e| Error::from_err("error decoding body", Box::new(e), Kind::BadRequest))?;
 
     // The name of the file will be the hash of the contents
     let hash = digest(data.as_slice());
@@ -96,7 +73,7 @@ async fn create_blob(
     state
         .store
         .put(&blob_name(&hash), data)
-        .map_err(|e| ctx.e(Some(e.to_string()), Kind::Internal))?;
+        .map_err(|e| Error::from_err("error storing blob", Box::new(e), Kind::BadRequest))?;
 
     Ok(Json(CreateBlobResponse { created: hash }))
 }
@@ -108,21 +85,11 @@ pub struct BlobResponse {
 
 // Endpoint for fetching a stored blob
 async fn fetch_blob(
-    ContextExtractor(ctx): ContextExtractor,
     Path(hash): Path<String>,
     exState(state): exState<State>,
 ) -> Result<impl IntoResponse, Error> {
-    println!("{:?}", ctx);
-
-    let data_res = state.store.get(&blob_name(&hash));
-    if let Err(err) = &data_res {
-        let kind = match err {
-            StorageError::NotFound => Kind::NotFound,
-            _ => Kind::Internal,
-        };
-
-        return Err(ctx.e(Some(err.to_string()), kind));
-    }
+    let data_res = state.store.get(&blob_name(&hash))
+        .map_err(|e| Error::from_err("error finding blob", Box::new(e), Kind::NotFound));
 
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD.encode(data_res.unwrap());

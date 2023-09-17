@@ -14,9 +14,9 @@ use axum::{
 use hyper::Request;
 use tokio::time::Instant;
 
-use anchorage::storage;
-use crate::blobserver;
-use tracing::{info, event};
+use anchorage::{storage, Storage};
+use anchorage::blobserver::server;
+use tracing::{info, error};
 
 /**
  * This binary runs the blob server.
@@ -44,7 +44,7 @@ async fn main() {
         store: Arc::new(store),
     };
 
-    let blob_routes = blobserver::new_router();
+    let blob_routes = server::new_router();
     // Crazy into/from stuff going on here, but declaring the type so we know it's
     // still Router<AppState>
     let blob_router: Router<AppState> = blob_routes.with_state(app_state.clone().into());
@@ -87,7 +87,7 @@ fn config() -> Config {
 }
 
 // Configures a new blob store from what the config says
-fn store(config: &Config) -> impl blobserver::Store {
+fn store(config: &Config) -> impl Storage {
     match &config.storage {
         StorageConfig::Local { directory } => storage::Local::new(directory.clone()),
     }
@@ -97,7 +97,7 @@ fn store(config: &Config) -> impl blobserver::Store {
 #[derive(Clone)]
 struct AppState {
     started: Instant,
-    store: Arc<dyn blobserver::Store + Send + Sync>,
+    store: Arc<dyn Storage + Send + Sync>,
 }
 
 // Splitting an AppState into something specific for the server implementations
@@ -105,9 +105,9 @@ struct AppState {
 // Ignoring clippy warnings here since I want the server module to be independent of the
 // binary's specific types
 #[allow(clippy::from_over_into)]
-impl Into<blobserver::State> for AppState {
-    fn into(self) -> blobserver::State {
-        blobserver::State { store: self.store }
+impl Into<server::State> for AppState {
+    fn into(self) -> server::State {
+        server::State { store: self.store }
     }
 }
 
@@ -130,13 +130,12 @@ async fn log_request_response<B>(
     let res = next.run(req).await;
 
     let resp_code = res.status().as_u16();
-    let level: tracing::Level = if resp_code < 200 || resp_code > 299 {
-        tracing::Level::INFO
+    // Has to be called different ways since you can't use `event!` without a constant value for level
+    if resp_code < 200 || resp_code > 299 {
+        info!(code = resp_code, "response");
     } else {
-        tracing::Level::ERROR
+        error!(code = resp_code, "response");
     };
-
-    event!(tracing::Level::INFO, code = res.status().as_u16(), "response");
 
     Ok(res)
 }
