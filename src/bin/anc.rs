@@ -12,9 +12,9 @@ fn cli() -> Command {
         .about("interacts with a given anchorage server")
         .subcommand_required(true)
         .subcommand(
-            Command::new("put-blob")
-                .about("sends a new a blob into the server")
-                .arg(arg!([blob_location]).required(false)),
+            Command::new("put")
+                .subcommand_required(true)
+                .subcommand(Command::new("blob").arg(arg!([blob_location]).required(false))),
         )
         .subcommand(
             Command::new("get-blob")
@@ -29,23 +29,29 @@ async fn main() -> Result<()> {
     let client = Client::default();
 
     match cli().get_matches().subcommand() {
-        Some(("put-blob", submatches)) => {
-            // Read from either std in or read in the file
-            let mut reader: Box<dyn Read> =
-                if let Some(blob_location) = submatches.get_one::<String>("blob_location") {
-                    Box::new(File::open(blob_location)?)
-                } else {
-                    // Read a max of 2MB from std in
-                    Box::new(stdin())
-                };
+        Some(("put", submatches)) => {
+            match submatches.subcommand() {
+                Some(("blob", submatches)) => {
+                    // Read from either std in or read in the file
+                    let mut reader: Box<dyn Read> = if let Some(blob_location) =
+                        submatches.get_one::<String>("blob_location")
+                    {
+                        Box::new(File::open(blob_location)?)
+                    } else {
+                        // Read a max of 2MB from std in
+                        Box::new(stdin())
+                    };
 
-            let files = anchorage::chunk::create_chunks(&mut reader)?;
-            for (_, mut file) in files {
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf)?;
+                    let files = anchorage::chunk::create_chunks(&mut reader)?;
+                    for (_, mut file) in files {
+                        let mut buf = Vec::new();
+                        file.read_to_end(&mut buf)?;
 
-                let resp = client.put_blob(&buf).await?;
-                println!("{:?}", resp.created);
+                        let resp = client.put_blob(&buf).await?;
+                        println!("{:?}", resp.created);
+                    }
+                }
+                _ => unreachable!(),
             }
         }
         Some(("get-blob", submatches)) => {
