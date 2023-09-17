@@ -64,7 +64,7 @@ async fn create_blob(
     // Decode the base64 encoded data
     let data = general_purpose::STANDARD_NO_PAD
         .decode(body.data)
-        .map_err(|e| Error::from_err("error decoding body", Box::new(e), Kind::BadRequest))?;
+        .map_err(|e| Error::from_err("error decoding body", e, Kind::BadRequest))?;
 
     // The name of the file will be the hash of the contents
     let hash = digest(data.as_slice());
@@ -72,8 +72,8 @@ async fn create_blob(
     // Store it in the blob store
     state
         .store
-        .put(&blob_name(&hash), data)
-        .map_err(|e| Error::from_err("error storing blob", Box::new(e), Kind::BadRequest))?;
+        .put(&hash, data)
+        .map_err(|e| Error::from_err("error storing blob", e, Kind::BadRequest))?;
 
     Ok(Json(CreateBlobResponse { created: hash }))
 }
@@ -88,15 +88,11 @@ async fn fetch_blob(
     Path(hash): Path<String>,
     exState(state): exState<State>,
 ) -> Result<impl IntoResponse, Error> {
-    let data_res = state.store.get(&blob_name(&hash))
-        .map_err(|e| Error::from_err("error finding blob", Box::new(e), Kind::NotFound));
+    let data_res = state.store.get(&hash)
+        .map_err(|e| Error::from_err("error finding blob", e, Kind::NotFound))?;
 
     // Decode the base64 encoded data
-    let data = general_purpose::STANDARD_NO_PAD.encode(data_res.unwrap());
+    let data = general_purpose::STANDARD_NO_PAD.encode(data_res);
 
     Ok((StatusCode::CREATED, Json(BlobResponse { contents: data })))
-}
-
-fn blob_name(hash: &str) -> String {
-    format!("blob-{}", hash)
 }

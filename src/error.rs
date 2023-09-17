@@ -45,11 +45,14 @@ pub struct Error {
 
 impl Error {
     // The common constructor of an Error from a generic other error
-    pub fn from_err(msg: &str, err: Box<dyn std::error::Error + Send + Sync>, kind: Kind) -> Self {
+    //
+    // For the 'static constraint:
+    // https://github.com/pretzelhammer/rust-blog/blob/master/posts/common-rust-lifetime-misconceptions.md#2-if-t-static-then-t-must-be-valid-for-the-entire-program
+    pub fn from_err<E: std::error::Error + Send + Sync + 'static>(msg: &str, err: E, kind: Kind) -> Self {
         Error {
-            message: msg.to_owned(),
-            inner_err: Some(InnerErr(err)),
             kind,
+            message: msg.to_owned(),
+            inner_err: Some(InnerErr(Box::new(err))),
             op: None,
         }
     }
@@ -57,9 +60,9 @@ impl Error {
     // Constructor for making an error from a string
     pub fn from_msg(msg: &str, kind: Kind) -> Self {
         Error {
+            kind,
             message: msg.to_owned(),
             inner_err: None,
-            kind,
             op: None,
         }
     }
@@ -72,15 +75,16 @@ impl Display for Error {
         write!(w, "{{ ")?;
 
         if let Some(op) = &self.op {
-            write!(w, "op: '{}', ", op)?;
+            write!(w, "op: '{}' ", op)?;
         }
-        write!(w, "kind: '{}', ", self.kind)?;
+        write!(w, "kind: '{}' ", self.kind)?;
+        write!(w, "message: '{}' ", self.message)?;
 
         if let Some(err) = &self.inner_err {
-            write!(w, "err: '{:?}'", err)?;
+            write!(w, "err: '{:?}' ", err)?;
         }
 
-        write!(w, " }}")
+        write!(w, "}}")
     }
 }
 
@@ -93,6 +97,7 @@ impl serde::Serialize for Error {
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("Error", 4)?;
+        s.serialize_field("message", &self.message)?;
         s.serialize_field("op", &self.op)?;
         s.serialize_field("kind", &self.kind.to_string())?;
         if let Some(err) = &self.inner_err {
@@ -105,7 +110,7 @@ impl serde::Serialize for Error {
 // Makes this a valid return type for use with the client 
 impl From<reqwest::Error> for Error {
     fn from(value: reqwest::Error) -> Self {
-        Error::from_err("error with reqwest", Box::new(value), Kind::Internal)
+        Error::from_err("error with reqwest", value, Kind::Internal)
     }
 }
 
@@ -125,8 +130,6 @@ impl IntoResponse for Error {
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-
     use super::*;
 
     #[test]
@@ -135,13 +138,13 @@ mod tests {
             op: Some(String::from("server.Put")),
             kind: Kind::Permission,
             message: String::from("uh oh"),
-            inner_err: Some(InnerErr(Box::new(io::Error::last_os_error()))),
+            inner_err: None,
         };
 
         let formatted = format!("{}", err);
         assert_eq!(
             formatted,
-            "{ user: 'Bilbo', op: 'server.Put', kind: 'Permission', err: 'inner error' }",
+            "{ op: 'server.Put' kind: 'Permission' message: 'uh oh' }",
         );
     }
 }
