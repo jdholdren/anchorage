@@ -6,17 +6,17 @@ use serde::{Deserialize, Serialize};
 use axum::{
     extract::State,
     http::StatusCode,
+    middleware::{self, Next},
     response::IntoResponse,
     routing::get,
     Json, Router,
-    middleware::{self, Next},
 };
 use hyper::Request;
 use tokio::time::Instant;
 
-use anchorage::{storage, Storage};
 use anchorage::blobserver::server;
-use tracing::{info, error};
+use anchorage::{storage, Storage};
+use tracing::{error, info};
 
 /**
  * This binary runs the blob server.

@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Deserializer};
+use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Kind {
@@ -37,10 +37,10 @@ impl<'de> serde::Deserialize<'de> for InnerErr {
 /// on what exactly you're trying to do and where it failed.
 #[derive(Debug, Deserialize)]
 pub struct Error {
-    pub op: Option<String>,                // What operation you were trying to do
+    pub op: Option<String>, // What operation you were trying to do
     pub message: String,
-    pub kind: Kind,                // What kind of error this is
-    pub inner_err: Option<InnerErr>, 
+    pub kind: Kind, // What kind of error this is
+    pub inner_err: Option<InnerErr>,
 }
 
 impl Error {
@@ -48,7 +48,11 @@ impl Error {
     //
     // For the 'static constraint:
     // https://github.com/pretzelhammer/rust-blog/blob/master/posts/common-rust-lifetime-misconceptions.md#2-if-t-static-then-t-must-be-valid-for-the-entire-program
-    pub fn from_err<E: std::error::Error + Send + Sync + 'static>(msg: &str, err: E, kind: Kind) -> Self {
+    pub fn from_err<E: std::error::Error + Send + Sync + 'static>(
+        msg: &str,
+        err: E,
+        kind: Kind,
+    ) -> Self {
         Error {
             kind,
             message: msg.to_owned(),
@@ -107,7 +111,7 @@ impl serde::Serialize for Error {
     }
 }
 
-// Makes this a valid return type for use with the client 
+// Makes this a valid return type for use with the client
 impl From<reqwest::Error> for Error {
     fn from(value: reqwest::Error) -> Self {
         Error::from_err("error with reqwest", value, Kind::Internal)

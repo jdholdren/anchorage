@@ -1,17 +1,20 @@
 use std::sync::Arc;
-use std::result::Result;
+use std::{fmt::Debug, result::Result};
 
 use serde::{Deserialize, Serialize};
 
 use axum::{
     extract::{DefaultBodyLimit, Json as exJson, Path, State as exState},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
-    response::IntoResponse,
 };
 use hyper::StatusCode;
 
-use crate::{error::{Error, Kind}, Storage};
+use crate::{
+    error::{Error, Kind},
+    Storage,
+};
 
 use base64::{engine::general_purpose, Engine as _};
 use sha256::digest;
@@ -83,12 +86,28 @@ pub struct BlobResponse {
     pub contents: String,
 }
 
+impl Debug for BlobResponse {
+    fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Send it in plain text if it it's utf8
+        let bytes = general_purpose::STANDARD_NO_PAD
+            .decode(&self.contents)
+            .unwrap();
+        if let Ok(utf_safe) = String::from_utf8(bytes) {
+            return write!(w, "{}", &utf_safe);
+        }
+
+        write!(w, "{}", self.contents)
+    }
+}
+
 // Endpoint for fetching a stored blob
 async fn fetch_blob(
     Path(hash): Path<String>,
     exState(state): exState<State>,
 ) -> Result<impl IntoResponse, Error> {
-    let data_res = state.store.get(&hash)
+    let data_res = state
+        .store
+        .get(&hash)
         .map_err(|e| Error::from_err("error finding blob", e, Kind::NotFound))?;
 
     // Decode the base64 encoded data

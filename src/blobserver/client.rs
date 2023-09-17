@@ -2,8 +2,8 @@ use base64::{engine::general_purpose, Engine as _};
 use serde::de::DeserializeOwned;
 use std::result::Result;
 
-use crate::error::Error;
 use crate::blobserver::server;
+use crate::error::Error;
 
 pub struct Client {
     remote: String,

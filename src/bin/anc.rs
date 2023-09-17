@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         Some(("get-blob", submatches)) => {
             let hash = submatches.get_one::<String>("hash").unwrap();
             let resp = client.get_blob(hash).await?;
-            print!("{:?}", resp.contents)
+            print!("{:?}", resp)
         }
         _ => unreachable!(),
     };

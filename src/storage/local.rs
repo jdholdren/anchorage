@@ -39,7 +39,7 @@ impl crate::Storage for Local {
         // If the file is there, return early
         let path = Path::new(&self.directory).join(hash);
         if File::open(&path).is_ok() {
-            return Ok(()  );
+            return Ok(());
         }
 
         // Otherwise, create the file and write the data to it
@@ -55,3 +55,6 @@ impl From<std::io::Error> for StorageError {
         Self::IO(value.to_string())
     }
 }
+
+#[cfg(test)]
+mod local_storage_tests {}

@@ -1,7 +1,7 @@
+pub mod blobserver;
 pub mod chunk;
 pub mod error;
 pub mod storage;
-pub mod blobserver;
 
 use error::Error;
 

@@ -1,5 +1,3 @@
-pub struct Service {
-}
+pub struct Service {}
 
-impl Service {
-}
+impl Service {}
